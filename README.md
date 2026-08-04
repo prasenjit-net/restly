@@ -90,14 +90,19 @@ writing a document to that path later recreates the collection.
 
 ## Admin API and UI
 
-The embedded UI has a dashboard, collection/document editor, and API
-playground. Its supporting endpoints stay outside the data namespace:
+The embedded UI has a dashboard, Finder-style collection/document editor, a
+request workspace, and an observability console. The request workspace keeps
+saved requests, variables, local run history, assertions, and response views
+in the browser. The observability console shows the latest 500 server requests
+without recording query strings or request bodies. Its supporting endpoints
+stay outside the data namespace:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/health` | Server liveness and version |
 | GET | `/api/config` | UI bootstrap configuration |
 | GET | `/api/metrics` | Request, connection, and uptime metrics |
+| GET | `/api/requests?limit=100` | Recent method, path, status, duration, and timestamp traces |
 | GET | `/api/stats` | Collection/document totals and data directory |
 | GET | `/api/collections` | Collection names, counts, and automatic indexes |
 | POST | `/api/maintenance/compact` | Compact all loaded collections |

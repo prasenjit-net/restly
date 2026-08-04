@@ -7,6 +7,7 @@ import Layout from "./components/Layout";
 import CollectionsPage from "./pages/Collections";
 import DashboardPage from "./pages/Dashboard";
 import NotFoundPage from "./pages/NotFound";
+import ObservabilityPage from "./pages/Observability";
 import PlaygroundPage from "./pages/Playground";
 import SettingsPage from "./pages/Settings";
 
@@ -32,6 +33,12 @@ const playgroundRoute = createRoute({
   component: PlaygroundPage,
 });
 
+const observabilityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/observability",
+  component: ObservabilityPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -42,6 +49,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   collectionsRoute,
   playgroundRoute,
+  observabilityRoute,
   settingsRoute,
 ]);
 

@@ -43,6 +43,14 @@ export interface StoreStats {
   dataPath: string;
 }
 
+export interface RequestTrace {
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  timestampMs: number;
+}
+
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
@@ -107,6 +115,7 @@ export const api = {
   config: () => request<ServerConfig>("/api/config"),
   health: () => request<{ status: string; version: string }>("/api/health"),
   metrics: () => request<Metrics>("/api/metrics"),
+  requests: (limit = 100) => request<{ data: RequestTrace[] }>(`/api/requests?limit=${limit}`),
   storeStats: () => request<StoreStats>("/api/stats"),
   collections: () => request<{ data: CollectionInfo[] }>("/api/collections"),
   compact: () => request<void>("/api/maintenance/compact", { method: "POST" }),

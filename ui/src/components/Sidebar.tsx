@@ -6,13 +6,14 @@ import {
   IconDatabase,
   IconExternal,
   IconBolt,
+  IconActivity,
   IconSliders,
   IconX,
 } from "../icons";
 import Logo from "./Logo";
 
 interface NavItem {
-  to: "/" | "/collections" | "/playground" | "/settings";
+  to: "/" | "/collections" | "/playground" | "/observability" | "/settings";
   label: string;
   icon: ReactElement;
 }
@@ -21,6 +22,7 @@ const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: <IconDashboard size={20} /> },
   { to: "/collections", label: "Collections", icon: <IconDatabase size={20} /> },
   { to: "/playground", label: "API Playground", icon: <IconBolt size={20} /> },
+  { to: "/observability", label: "Observability", icon: <IconActivity size={20} /> },
   { to: "/settings", label: "Settings", icon: <IconSliders size={20} /> },
 ];
 
