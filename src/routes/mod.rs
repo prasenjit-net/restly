@@ -16,6 +16,7 @@ pub fn router(state: SharedState) -> Router {
         .route("/api/health", get(api::health))
         .route("/api/config", get(api::config))
         .route("/api/metrics", get(api::metrics))
+        .route("/api/requests", get(api::recent_requests))
         .route("/api/stats", get(api::store_stats))
         .route("/api/collections", get(api::collections))
         .route("/api/maintenance/compact", post(api::compact_store))

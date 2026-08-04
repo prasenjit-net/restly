@@ -78,6 +78,34 @@ async fn health_reports_ok() {
 }
 
 #[tokio::test]
+async fn recent_requests_exposes_method_path_status_and_duration() {
+    let app = test_app().await;
+    let health = app
+        .clone()
+        .oneshot(request(Method::GET, "/api/health"))
+        .await
+        .unwrap();
+    assert_eq!(health.status(), StatusCode::OK);
+
+    let response = app
+        .oneshot(request(Method::GET, "/api/requests?limit=10"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_json(response).await;
+    let trace = body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|trace| trace["path"] == "/api/health")
+        .unwrap();
+    assert_eq!(trace["method"], "GET");
+    assert_eq!(trace["status"], 200);
+    assert!(trace["durationMs"].is_number());
+    assert!(trace["timestampMs"].is_number());
+}
+
+#[tokio::test]
 async fn config_exposes_ui_section_camel_cased() {
     let app = test_app().await;
     let res = app

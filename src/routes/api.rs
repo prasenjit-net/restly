@@ -1,6 +1,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
@@ -29,6 +30,23 @@ pub async fn metrics(State(state): State<SharedState>) -> AppResult<Json<Metrics
         .clone()
         .map(Json)
         .ok_or_else(|| AppError::Internal("metrics are not available yet".into()))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RecentRequestsQuery {
+    #[serde(default = "default_request_limit")]
+    limit: usize,
+}
+
+fn default_request_limit() -> usize {
+    100
+}
+
+pub async fn recent_requests(
+    State(state): State<SharedState>,
+    Query(query): Query<RecentRequestsQuery>,
+) -> Json<Value> {
+    Json(json!({ "data": state.request_traces.recent(query.limit).await }))
 }
 
 /// Lists the discovered data collections for the admin UI. Documents remain
