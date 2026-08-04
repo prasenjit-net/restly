@@ -83,6 +83,8 @@ interface TestResult {
   detail: string;
 }
 
+let nextLocalId = 0;
+
 const emptyRow = (): KeyValue => ({ id: makeId(), key: "", value: "", enabled: true });
 const emptyAssertion = (): Assertion => ({
   id: makeId(),
@@ -90,6 +92,23 @@ const emptyAssertion = (): Assertion => ({
   path: "",
   expected: "200",
   enabled: true,
+});
+
+const templateRow = (id: string, key: string, value: string): KeyValue => ({
+  id,
+  key,
+  value,
+  enabled: true,
+});
+
+const getTemplate = (name: string, params: KeyValue[] = []): RequestDraft => ({
+  name,
+  method: "GET",
+  path: "/data/users",
+  params,
+  headers: [],
+  body: "",
+  assertions: [{ ...emptyAssertion(), expected: "200" }],
 });
 
 const newDraft = (): RequestDraft => ({
@@ -105,18 +124,10 @@ const newDraft = (): RequestDraft => ({
 const TEMPLATES: { name: string; draft: RequestDraft }[] = [
   {
     name: "List documents",
-    draft: {
-      name: "List users",
-      method: "GET",
-      path: "/data/users",
-      params: [
-        { id: "limit", key: "limit", value: "50", enabled: true },
-        { id: "sort", key: "sort", value: "-_updatedAt", enabled: true },
-      ],
-      headers: [],
-      body: "",
-      assertions: [{ ...emptyAssertion(), expected: "200" }],
-    },
+    draft: getTemplate("List users", [
+      templateRow("limit", "limit", "50"),
+      templateRow("sort", "sort", "-_updatedAt"),
+    ]),
   },
   {
     name: "Create document",
@@ -125,25 +136,17 @@ const TEMPLATES: { name: string; draft: RequestDraft }[] = [
       method: "POST",
       path: "/data/users",
       params: [],
-      headers: [{ id: "content-type", key: "Content-Type", value: "application/json", enabled: true }],
+      headers: [templateRow("content-type", "Content-Type", "application/json")],
       body: '{\n  "name": "Ada Lovelace",\n  "active": true\n}',
       assertions: [{ ...emptyAssertion(), expected: "201" }],
     },
   },
   {
     name: "Find by filter",
-    draft: {
-      name: "Find active users",
-      method: "GET",
-      path: "/data/users",
-      params: [
-        { id: "active", key: "where.active", value: "true", enabled: true },
-        { id: "sort", key: "sort", value: "-_updatedAt", enabled: true },
-      ],
-      headers: [],
-      body: "",
-      assertions: [{ ...emptyAssertion(), expected: "200" }],
-    },
+    draft: getTemplate("Find active users", [
+      templateRow("active", "where.active", "true"),
+      templateRow("sort", "sort", "-_updatedAt"),
+    ]),
   },
   {
     name: "Server health",
@@ -163,7 +166,8 @@ const TEMPLATES: { name: string; draft: RequestDraft }[] = [
 ];
 
 function makeId() {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  nextLocalId += 1;
+  return `local-${Date.now()}-${nextLocalId}`;
 }
 
 function cloneDraft(draft: RequestDraft): RequestDraft {
@@ -204,7 +208,9 @@ function buildUrl(draft: RequestDraft, baseUrl: string, variables: Record<string
   const path = resolveVariables(draft.path.trim(), variables);
   if (!path) throw new Error("A request path is required");
   const root = resolveVariables(baseUrl.trim(), variables).replace(/\/$/, "");
-  const raw = /^https?:\/\//.test(path) ? path : `${root}${path.startsWith("/") ? path : `/${path}`}`;
+  const isAbsolute = /^https?:\/\//.test(path);
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const raw = isAbsolute ? path : `${root}${normalizedPath}`;
   const url = new URL(raw, window.location.origin);
   for (const row of draft.params) {
     if (row.enabled && row.key.trim()) {
@@ -285,17 +291,19 @@ function methodTone(method: HttpMethod) {
   }[method];
 }
 
+interface KeyValueEditorProps {
+  rows: KeyValue[];
+  onChange: (rows: KeyValue[]) => void;
+  keyLabel: string;
+  valueLabel: string;
+}
+
 function KeyValueEditor({
   rows,
   onChange,
   keyLabel,
   valueLabel,
-}: {
-  rows: KeyValue[];
-  onChange: (rows: KeyValue[]) => void;
-  keyLabel: string;
-  valueLabel: string;
-}) {
+}: Readonly<KeyValueEditorProps>) {
   const update = (id: string, patch: Partial<KeyValue>) =>
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
 
@@ -318,13 +326,46 @@ function KeyValueEditor({
           />
           <input className="input py-1.5 font-mono text-[0.75rem]" value={row.key} onChange={(event) => update(row.id, { key: event.target.value })} />
           <input className="input py-1.5 font-mono text-[0.75rem]" value={row.value} onChange={(event) => update(row.id, { value: event.target.value })} />
-          <button className="icon-btn danger size-8" onClick={() => onChange(rows.filter((entry) => entry.id !== row.id))} title="Remove row" aria-label="Remove row">
+          <button type="button" className="icon-btn danger size-8" onClick={() => onChange(rows.filter((entry) => entry.id !== row.id))} title="Remove row" aria-label="Remove row">
             <IconTrash size={14} />
           </button>
         </div>
       ))}
-      <button className="btn btn-ghost btn-sm self-start" onClick={() => onChange([...rows, emptyRow()])}>
+      <button type="button" className="btn btn-ghost btn-sm self-start" onClick={() => onChange([...rows, emptyRow()])}>
         <IconPlus size={14} /> Add row
+      </button>
+    </div>
+  );
+}
+
+function AssertionsEditor({
+  assertions,
+  onChange,
+}: Readonly<{
+  assertions: Assertion[];
+  onChange: (assertions: Assertion[]) => void;
+}>) {
+  const update = (id: string, patch: Partial<Assertion>) =>
+    onChange(assertions.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
+
+  return (
+    <div className="flex flex-col gap-2">
+      {assertions.map((assertion) => (
+        <div key={assertion.id} className="grid grid-cols-[28px_92px_minmax(0,1fr)_minmax(0,1fr)_32px] gap-1.5">
+          <input type="checkbox" className="m-auto size-3.5 accent-[var(--accent)]" checked={assertion.enabled} onChange={(event) => update(assertion.id, { enabled: event.target.checked })} />
+          <select className="input py-1.5 text-[0.75rem]" value={assertion.kind} onChange={(event) => update(assertion.id, { kind: event.target.value as Assertion["kind"] })}>
+            <option value="status">Status</option>
+            <option value="json">JSON path</option>
+          </select>
+          <input className="input py-1.5 font-mono text-[0.75rem]" value={assertion.path} disabled={assertion.kind === "status"} placeholder={assertion.kind === "status" ? "Status" : "data[0].name"} onChange={(event) => update(assertion.id, { path: event.target.value })} />
+          <input className="input py-1.5 font-mono text-[0.75rem]" value={assertion.expected} onChange={(event) => update(assertion.id, { expected: event.target.value })} />
+          <button type="button" className="icon-btn danger size-8" onClick={() => onChange(assertions.filter((entry) => entry.id !== assertion.id))} title="Remove assertion" aria-label="Remove assertion">
+            <IconTrash size={14} />
+          </button>
+        </div>
+      ))}
+      <button type="button" className="btn btn-ghost btn-sm self-start" onClick={() => onChange([...assertions, emptyAssertion()])}>
+        <IconPlus size={14} /> Add assertion
       </button>
     </div>
   );
@@ -495,10 +536,10 @@ export default function PlaygroundPage() {
           {TEMPLATES.map((template) => <option key={template.name}>{template.name}</option>)}
         </select>
         <input className="input min-w-[180px] flex-1 py-1.5 text-[0.8rem]" value={workspace.baseUrl} placeholder="Base URL (current server)" onChange={(event) => setWorkspace((current) => ({ ...current, baseUrl: event.target.value }))} />
-        <button className="btn btn-secondary btn-sm" onClick={() => { setDraft(newDraft()); setSelectedSaved(null); setResponse(null); }}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setDraft(newDraft()); setSelectedSaved(null); setResponse(null); }}>
           <IconPlus size={14} /> New
         </button>
-        <button className="btn btn-secondary btn-sm" onClick={saveRequest}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={saveRequest}>
           <IconSave size={14} /> Save
         </button>
       </div>
@@ -510,7 +551,7 @@ export default function PlaygroundPage() {
             <h3 className="px-1 pb-1 font-mono text-[0.67rem] text-ink-faint">SAVED REQUESTS</h3>
             <div className="mb-4 flex flex-col gap-0.5">
               {workspace.saved.map((saved) => (
-                <button key={saved.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left ${selectedSaved === saved.id ? "bg-accent text-on-accent" : "hover:bg-surface-2"}`} onClick={() => selectSaved(saved)}>
+                <button type="button" key={saved.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left ${selectedSaved === saved.id ? "bg-accent text-on-accent" : "hover:bg-surface-2"}`} onClick={() => selectSaved(saved)}>
                   <span className={`font-mono text-[0.67rem] font-semibold ${selectedSaved === saved.id ? "text-on-accent" : methodTone(saved.method)}`}>{saved.method}</span>
                   <span className="min-w-0 flex-1 truncate text-[0.78rem]">{saved.name}</span>
                 </button>
@@ -520,7 +561,7 @@ export default function PlaygroundPage() {
             <h3 className="px-1 pb-1 font-mono text-[0.67rem] text-ink-faint">RECENT RUNS</h3>
             <div className="flex flex-col gap-0.5">
               {workspace.history.map((entry) => (
-                <button key={entry.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-2" onClick={() => setDraft((current) => ({ ...current, method: entry.method, path: entry.path }))}>
+                <button type="button" key={entry.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-2" onClick={() => setDraft((current) => ({ ...current, method: entry.method, path: entry.path }))}>
                   <span className={`font-mono text-[0.67rem] font-semibold ${methodTone(entry.method)}`}>{entry.method}</span>
                   <span className="min-w-0 flex-1 truncate text-[0.75rem]">{entry.path}</span>
                   <span className={`rounded px-1.5 py-0.5 font-mono text-[0.65rem] ${statusTone(entry.status)}`}>{entry.status}</span>
@@ -543,28 +584,28 @@ export default function PlaygroundPage() {
               {METHODS.map((method) => <option key={method}>{method}</option>)}
             </select>
             <input className="input min-w-0 flex-1 py-1.5 font-mono text-[0.78rem]" value={draft.path} onChange={(event) => updateDraft({ path: event.target.value })} placeholder="/data/users" />
-            <button className="btn btn-primary btn-sm" onClick={send} disabled={pending} title="Send request">
+            <button type="button" className="btn btn-primary btn-sm" onClick={send} disabled={pending} title="Send request">
               <IconPlay size={14} /> {pending ? "Sending" : "Send"}
             </button>
           </div>
           <div className="flex border-b border-line px-3">
-            {REQUEST_TABS.map((tab) => <button key={tab} className={`border-b-2 px-3 py-2 text-[0.76rem] font-medium ${requestTab === tab ? "border-accent text-accent" : "border-transparent text-ink-muted hover:text-ink"}`} onClick={() => setRequestTab(tab)}>{tab}</button>)}
+            {REQUEST_TABS.map((tab) => <button type="button" key={tab} className={`border-b-2 px-3 py-2 text-[0.76rem] font-medium ${requestTab === tab ? "border-accent text-accent" : "border-transparent text-ink-muted hover:text-ink"}`} onClick={() => setRequestTab(tab)}>{tab}</button>)}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             {requestTab === "Params" ? <KeyValueEditor rows={draft.params} onChange={(params) => updateDraft({ params })} keyLabel="Parameter" valueLabel="Value" /> : null}
             {requestTab === "Headers" ? <KeyValueEditor rows={draft.headers} onChange={(headers) => updateDraft({ headers })} keyLabel="Header" valueLabel="Value" /> : null}
             {requestTab === "Body" ? <textarea className="input min-h-[320px] resize-y font-mono text-[0.78rem] leading-5" value={draft.body} onChange={(event) => updateDraft({ body: event.target.value })} disabled={["GET", "DELETE"].includes(draft.method)} spellCheck={false} /> : null}
-            {requestTab === "Tests" ? <div className="flex flex-col gap-2">{draft.assertions.map((assertion) => <div key={assertion.id} className="grid grid-cols-[28px_92px_minmax(0,1fr)_minmax(0,1fr)_32px] gap-1.5"><input type="checkbox" className="m-auto size-3.5 accent-[var(--accent)]" checked={assertion.enabled} onChange={(event) => updateDraft({ assertions: draft.assertions.map((entry) => entry.id === assertion.id ? { ...entry, enabled: event.target.checked } : entry) })} /><select className="input py-1.5 text-[0.75rem]" value={assertion.kind} onChange={(event) => updateDraft({ assertions: draft.assertions.map((entry) => entry.id === assertion.id ? { ...entry, kind: event.target.value as Assertion["kind"] } : entry) })}><option value="status">Status</option><option value="json">JSON path</option></select><input className="input py-1.5 font-mono text-[0.75rem]" value={assertion.path} disabled={assertion.kind === "status"} placeholder={assertion.kind === "status" ? "Status" : "data[0].name"} onChange={(event) => updateDraft({ assertions: draft.assertions.map((entry) => entry.id === assertion.id ? { ...entry, path: event.target.value } : entry) })} /><input className="input py-1.5 font-mono text-[0.75rem]" value={assertion.expected} onChange={(event) => updateDraft({ assertions: draft.assertions.map((entry) => entry.id === assertion.id ? { ...entry, expected: event.target.value } : entry) })} /><button className="icon-btn danger size-8" onClick={() => updateDraft({ assertions: draft.assertions.filter((entry) => entry.id !== assertion.id) })} title="Remove assertion" aria-label="Remove assertion"><IconTrash size={14} /></button></div>)}<button className="btn btn-ghost btn-sm self-start" onClick={() => updateDraft({ assertions: [...draft.assertions, emptyAssertion()] })}><IconPlus size={14} /> Add assertion</button></div> : null}
+            {requestTab === "Tests" ? <AssertionsEditor assertions={draft.assertions} onChange={(assertions) => updateDraft({ assertions })} /> : null}
           </div>
         </section>
 
         <section className="flex min-h-[440px] flex-col xl:min-h-0">
           <div className="flex h-11 items-center gap-2 border-b border-line bg-surface-2 px-3">
             <h2 className="mr-auto text-[0.8rem] font-semibold">Response</h2>
-            {response ? <><span className={`rounded px-2 py-1 font-mono text-[0.68rem] font-semibold ${statusTone(response.status)}`}>{response.status}</span><span className="font-mono text-[0.68rem] text-ink-faint">{response.durationMs.toFixed(0)} ms</span><span className="font-mono text-[0.68rem] text-ink-faint">{response.size} B</span><button className="icon-btn size-7" onClick={copyResponse} title="Copy response" aria-label="Copy response"><IconCopy size={14} /></button></> : null}
+            {response ? <><span className={`rounded px-2 py-1 font-mono text-[0.68rem] font-semibold ${statusTone(response.status)}`}>{response.status}</span><span className="font-mono text-[0.68rem] text-ink-faint">{response.durationMs.toFixed(0)} ms</span><span className="font-mono text-[0.68rem] text-ink-faint">{response.size} B</span><button type="button" className="icon-btn size-7" onClick={copyResponse} title="Copy response" aria-label="Copy response"><IconCopy size={14} /></button></> : null}
           </div>
           <div className="flex border-b border-line px-3">
-            {RESPONSE_TABS.map((tab) => <button key={tab} className={`border-b-2 px-3 py-2 text-[0.76rem] font-medium ${responseTab === tab ? "border-accent text-accent" : "border-transparent text-ink-muted hover:text-ink"}`} onClick={() => setResponseTab(tab)}>{tab}</button>)}
+            {RESPONSE_TABS.map((tab) => <button type="button" key={tab} className={`border-b-2 px-3 py-2 text-[0.76rem] font-medium ${responseTab === tab ? "border-accent text-accent" : "border-transparent text-ink-muted hover:text-ink"}`} onClick={() => setResponseTab(tab)}>{tab}</button>)}
           </div>
           <div className="min-h-0 flex-1 overflow-auto">{responseContent()}</div>
           {response ? <div className="border-t border-line px-3 py-2 font-mono text-[0.68rem] text-ink-faint truncate">{response.url}</div> : null}

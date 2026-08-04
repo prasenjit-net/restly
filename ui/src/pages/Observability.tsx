@@ -77,10 +77,10 @@ export default function ObservabilityPage() {
             </div>
             <div className="inline-flex rounded-md border border-line bg-surface p-0.5">
               {(["all", "data", "admin", "errors"] as Filter[]).map((entry) => (
-                <button key={entry} className={`rounded px-2.5 py-1 text-[0.72rem] font-medium capitalize ${filter === entry ? "bg-accent text-on-accent" : "text-ink-muted hover:bg-surface-2 hover:text-ink"}`} onClick={() => setFilter(entry)}>{entry}</button>
+                <button type="button" key={entry} className={`rounded px-2.5 py-1 text-[0.72rem] font-medium capitalize ${filter === entry ? "bg-accent text-on-accent" : "text-ink-muted hover:bg-surface-2 hover:text-ink"}`} onClick={() => setFilter(entry)}>{entry}</button>
               ))}
             </div>
-            <button className="icon-btn size-8" onClick={() => requestsQuery.refetch()} title="Refresh request stream" aria-label="Refresh request stream"><IconRefresh size={15} /></button>
+            <button type="button" className="icon-btn size-8" onClick={() => requestsQuery.refetch()} title="Refresh request stream" aria-label="Refresh request stream"><IconRefresh size={15} /></button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] border-collapse text-sm">
@@ -120,7 +120,7 @@ export default function ObservabilityPage() {
               <div className="flex justify-between gap-3 border-b border-line py-2"><dt className="text-ink-muted">Documents</dt><dd className="m-0 font-medium">{statsQuery.data ? formatNumber(statsQuery.data.documentCount) : "-"}</dd></div>
               <div className="flex justify-between gap-3 py-2"><dt className="text-ink-muted">Path</dt><dd className="m-0 max-w-[65%] truncate font-mono text-[0.68rem]">{statsQuery.data?.dataPath ?? "-"}</dd></div>
             </dl>
-            <button className="btn btn-secondary btn-sm mt-3 w-full" onClick={() => compactMutation.mutate()} disabled={compactMutation.isPending}>
+            <button type="button" className="btn btn-secondary btn-sm mt-3 w-full" onClick={() => compactMutation.mutate()} disabled={compactMutation.isPending}>
               <IconRefresh size={14} /> Compact store
             </button>
           </section>
