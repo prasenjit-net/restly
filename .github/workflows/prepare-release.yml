@@ -1,0 +1,114 @@
+name: Prepare release
+
+# A release always starts as a normal, reviewable pull request. The bot token
+# is used to create the branch and PR only; it is never allowed to push main.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version part to bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+        required: true
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Create version-bump pull request
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+    steps:
+      - name: Require the release bot token
+        run: |
+          test -n "$GH_TOKEN" || {
+            echo "::error::Set the RELEASE_BOT_TOKEN repository secret before preparing a release."
+            exit 1
+          }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_BOT_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+
+      - uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2
+        with:
+          tool: cargo-edit
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ui/.nvmrc
+
+      - id: release
+        name: Calculate and validate the release version
+        run: |
+          set -euo pipefail
+          cargo set-version --bump "${{ inputs.bump }}"
+          cargo update -p restly
+          version=$(sed -nE 's/^version = "([^"]+)"/\1/p' Cargo.toml | head -n 1)
+          test -n "$version"
+          (cd ui && npm version "$version" --no-git-tag-version --allow-same-version)
+
+          tag="v$version"
+          branch="release/$tag"
+          existing_pr=$(gh pr list --base main --head "$branch" --state open --json url --jq '.[0].url')
+          if [ -n "$existing_pr" ]; then
+            echo "An open release PR already exists: $existing_pr"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag"; then
+            echo "::error::Tag $tag already exists. Refusing to reuse a release version."
+            exit 1
+          fi
+          if git ls-remote --exit-code --heads origin "$branch"; then
+            echo "::error::Branch $branch already exists without an open release PR. Resolve it before retrying."
+            exit 1
+          fi
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "branch=$branch"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push the release branch
+        if: steps.release.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          git switch -c "${{ steps.release.outputs.branch }}"
+          git config user.name "restly-release-bot"
+          git config user.email "restly-release-bot@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock ui/package.json ui/package-lock.json
+          git commit -m "chore(release): ${{ steps.release.outputs.tag }}"
+          git push origin "${{ steps.release.outputs.branch }}"
+
+      - name: Open the release pull request
+        if: steps.release.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          gh label create release --color 0E8A16 --description "Automated version-bump release" --force
+          gh pr create \
+            --base main \
+            --head "${{ steps.release.outputs.branch }}" \
+            --title "chore(release): ${{ steps.release.outputs.tag }}" \
+            --label release \
+            --body "Prepares ${{ steps.release.outputs.tag }}. Merging this PR triggers the release build and publication workflow."

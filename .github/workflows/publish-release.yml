@@ -1,0 +1,187 @@
+name: Publish release
+
+# A merge to main can only publish when it came from the labeled release PR.
+# The workflow tags the exact push SHA, so later main commits cannot leak into
+# the release being built.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publish-release-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  identify:
+    name: Identify a merged release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.release.outputs.release }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+            --jq '.[] | select(.merged_at != null and .base.ref == "main" and (.head.ref | startswith("release/")) and any(.labels[]; .name == "release")) | .number' \
+            | head -n 1)
+          if [ -z "$pr" ]; then
+            echo "This main push is not a merged release PR."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cargo_version=$(sed -nE 's/^version = "([^"]+)"/\1/p' Cargo.toml | head -n 1)
+          ui_version=$(sed -nE 's/^[[:space:]]*"version": "([^"]+)",/\1/p' ui/package.json | head -n 1)
+          test -n "$cargo_version"
+          test "$cargo_version" = "$ui_version" || {
+            echo "::error::Cargo and UI versions do not match."
+            exit 1
+          }
+
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "tag=v$cargo_version" >> "$GITHUB_OUTPUT"
+          echo "Publishing v$cargo_version from release PR #$pr."
+
+  build:
+    name: Build / ${{ matrix.target }}
+    needs: identify
+    if: needs.identify.outputs.release == 'true'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - working-directory: ui
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          key: ${{ matrix.target }}
+
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="restly-${{ needs.identify.outputs.tag }}-${{ matrix.target }}"
+          mkdir "$stage"
+          cp "target/${{ matrix.target }}/release/restly" "$stage/"
+          cp README.md LICENSE config.toml "$stage/"
+          tar -czf "$stage.tar.gz" "$stage"
+          shasum -a 256 "$stage.tar.gz" > "$stage.tar.gz.sha256"
+
+      - name: Package (windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $stage = "restly-${{ needs.identify.outputs.tag }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/restly.exe" -Destination $stage
+          Copy-Item README.md, LICENSE, config.toml -Destination $stage
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          Get-FileHash "$stage.zip" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $stage.zip" } |
+            Out-File -Encoding ascii "$stage.zip.sha256"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            restly-*.tar.gz
+            restly-*.tar.gz.sha256
+            restly-*.zip
+            restly-*.zip.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [identify, build]
+    if: needs.identify.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Create or validate the release tag
+        run: |
+          set -euo pipefail
+          tag="${{ needs.identify.outputs.tag }}"
+          git fetch --tags --force
+          if git rev-parse --verify --quiet "refs/tags/$tag"; then
+            tagged_sha=$(git rev-list -n 1 "$tag")
+            test "$tagged_sha" = "${GITHUB_SHA}" || {
+              echo "::error::Tag $tag already points to $tagged_sha, not ${GITHUB_SHA}."
+              exit 1
+            }
+            echo "Tag $tag already points at this merge commit; resuming publication."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" "${GITHUB_SHA}" -m "Release $tag"
+            git push origin "refs/tags/$tag"
+          fi
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ needs.identify.outputs.tag }}
+          name: ${{ needs.identify.outputs.tag }}
+          generate_release_notes: true
+          files: dist/*
