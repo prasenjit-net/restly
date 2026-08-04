@@ -91,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo set-version --bump "${{ inputs.bump }}"
-          cargo update -p rustly
+          cargo update -p restly
           version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
 
           # Keep the frontend's own package.json version in sync — the
@@ -166,9 +166,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stage="rustly-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
+          stage="restly-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
           mkdir "$stage"
-          cp "target/${{ matrix.target }}/release/rustly" "$stage/"
+          cp "target/${{ matrix.target }}/release/restly" "$stage/"
           cp README.md LICENSE config.toml "$stage/"
           tar -czf "$stage.tar.gz" "$stage"
           shasum -a 256 "$stage.tar.gz" > "$stage.tar.gz.sha256"
@@ -177,9 +177,9 @@ jobs:
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $stage = "rustly-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
+          $stage = "restly-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $stage | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/rustly.exe" -Destination $stage
+          Copy-Item "target/${{ matrix.target }}/release/restly.exe" -Destination $stage
           Copy-Item README.md, LICENSE, config.toml -Destination $stage
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
           Get-FileHash "$stage.zip" -Algorithm SHA256 |
@@ -190,10 +190,10 @@ jobs:
         with:
           name: package-${{ matrix.target }}
           path: |
-            rustly-*.tar.gz
-            rustly-*.tar.gz.sha256
-            rustly-*.zip
-            rustly-*.zip.sha256
+            restly-*.tar.gz
+            restly-*.tar.gz.sha256
+            restly-*.zip
+            restly-*.zip.sha256
           if-no-files-found: error
 
   release:

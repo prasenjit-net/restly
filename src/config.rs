@@ -58,7 +58,7 @@ pub struct UiConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            app_name: "Rustly".into(),
+            app_name: "Restly".into(),
             tagline: "No-config JSON data store".into(),
             default_theme: "auto".into(),
             repo_url: None,
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(config.server.port, 1234);
         assert_eq!(config.server.host, "127.0.0.1"); // untouched field defaults
         assert_eq!(config.logging.level, "info");
-        assert_eq!(config.ui.app_name, "Rustly");
+        assert_eq!(config.ui.app_name, "Restly");
     }
 
     #[test]

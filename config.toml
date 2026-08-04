@@ -1,8 +1,8 @@
 # ------------------------------------------------------------------
-# rustly configuration
+# restly configuration
 #
 # Every value here can be overridden on the command line, e.g.:
-#   rustly --config other.toml --port 9000 --log-level debug
+#   restly --config other.toml --port 9000 --log-level debug
 # ------------------------------------------------------------------
 
 [server]
@@ -19,8 +19,8 @@ access_log = "access.log"
 
 [ui]
 # This whole section is served to the SPA via GET /api/config.
-app_name = "Rustly"
+app_name = "Restly"
 tagline = "No-config JSON data store"
 # Theme the UI uses until the visitor picks one: light | dark | auto
 default_theme = "auto"
-repo_url = "https://github.com/prasenjit-net/rustly"
+repo_url = "https://github.com/prasenjit-net/restly"

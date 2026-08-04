@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
-const COLLAPSE_KEY = "rustly-sidebar";
+const COLLAPSE_KEY = "restly-sidebar";
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(

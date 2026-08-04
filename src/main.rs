@@ -17,12 +17,12 @@ use tracing_subscriber::EnvFilter;
 use crate::config::AppConfig;
 use crate::state::AppState;
 
-/// Rustly server: Axum REST API + embedded React SPA.
+/// Restly server: Axum REST API + embedded React SPA.
 ///
 /// Configuration is read from a TOML file; every flag below overrides
 /// the corresponding value from that file.
 #[derive(Parser, Debug)]
-#[command(name = "rustly", version, about)]
+#[command(name = "restly", version, about)]
 struct Cli {
     /// Path to the TOML configuration file
     #[arg(short, long, default_value = "config.toml")]
