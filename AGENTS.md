@@ -17,7 +17,7 @@ Guidance for coding agents working in this repository.
 - `src/error.rs` defines the shared API error envelope.
 - `src/static_assets.rs` serves embedded SPA assets and fallback routing.
 - `src/routes/` contains REST and WebSocket route handlers.
-- `src/services/` contains metrics, task storage, and event broadcasting.
+- `src/services/` contains document persistence, metrics, and event broadcasting.
 - `ui/src/lib/api.ts` is the typed frontend API client.
 - `ui/src/context/` contains Theme, Toast, Config, and WebSocket live data providers.
 - `ui/src/components/` contains reusable UI components.
@@ -53,12 +53,12 @@ make run
 Development servers:
 
 - Backend: `cargo run` on `127.0.0.1:8080`.
-- Frontend: `cd ui && npm run dev` on `localhost:5173`, proxying `/api` and `/ws` to the backend.
+- Frontend: `cd ui && npm run dev` on `localhost:5173`, proxying `/api`, `/data`, and `/ws` to the backend.
 
 ## Implementation Notes
 
 - Keep API responses using the existing `AppError` / JSON error envelope pattern.
-- Add new REST handlers in `src/routes/api.rs`, register routes in `src/routes/mod.rs`, and expose typed frontend calls from `ui/src/lib/api.ts`.
+- Keep document resources under `/data/**`; reserve `/api/**` for Restly administration and monitoring. Add handlers in `src/routes/api.rs`, register routes in `src/routes/mod.rs`, and expose typed frontend calls from `ui/src/lib/api.ts`.
 - Add new WebSocket event types in `src/services/events.rs` and handle them in `ui/src/context/LiveContext.tsx`.
 - Add new pages under `ui/src/pages/`, then update routing and navigation in the existing frontend structure.
 - Keep UI styling aligned with the tokens in `ui/src/styles/index.css`; avoid hard-coded one-off colors when a token exists.

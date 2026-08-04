@@ -16,8 +16,6 @@ export interface ServerConfig {
 }
 
 export interface Metrics {
-  cpu: number;
-  memory: number;
   requestsTotal: number;
   requestsPerMin: number;
   wsClients: number;
@@ -25,11 +23,24 @@ export interface Metrics {
   timestampMs: number;
 }
 
-export interface Task {
-  id: number;
-  title: string;
-  done: boolean;
-  createdAt: string;
+export type Document = Record<string, unknown>;
+
+export interface DocumentPage {
+  data: Document[];
+  page: { limit: number; returned: number; nextCursor: string | null };
+  total: number;
+}
+
+export interface CollectionInfo {
+  name: string;
+  count: number;
+  indexes: string[];
+}
+
+export interface StoreStats {
+  collectionCount: number;
+  documentCount: number;
+  dataPath: string;
 }
 
 export class ApiError extends Error {
@@ -82,17 +93,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+function queryString(params?: Record<string, string | number | boolean | undefined>) {
+  if (!params) return "";
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const encoded = search.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
 export const api = {
   config: () => request<ServerConfig>("/api/config"),
   health: () => request<{ status: string; version: string }>("/api/health"),
   metrics: () => request<Metrics>("/api/metrics"),
-  listTasks: () => request<Task[]>("/api/tasks"),
-  createTask: (title: string) =>
-    request<Task>("/api/tasks", { method: "POST", body: JSON.stringify({ title }) }),
-  toggleTask: (id: number) => request<Task>(`/api/tasks/${id}/toggle`, { method: "POST" }),
-  deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, { method: "DELETE" }),
-  /** Always fails server-side — demonstrates the error pipeline. */
-  errorDemo: (kind: string) => request<never>(`/api/error-demo?kind=${kind}`),
-  /** Hits an endpoint that does not exist — demonstrates the JSON 404. */
-  missing: () => request<never>("/api/this-endpoint-does-not-exist"),
+  storeStats: () => request<StoreStats>("/api/stats"),
+  collections: () => request<{ data: CollectionInfo[] }>("/api/collections"),
+  compact: () => request<void>("/api/maintenance/compact", { method: "POST" }),
+  listDocuments: (collection: string, params?: Record<string, string | number | boolean | undefined>) =>
+    request<DocumentPage>(`/data/${collection}${queryString(params)}`),
+  createDocument: (collection: string, document: Document) =>
+    request<Document>(`/data/${collection}`, {
+      method: "POST",
+      body: JSON.stringify(document),
+    }),
+  replaceDocument: (collection: string, id: string, document: Document) =>
+    request<Document>(`/data/${collection}/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(document),
+    }),
+  deleteDocument: (collection: string, id: string) =>
+    request<void>(`/data/${collection}/${id}`, { method: "DELETE" }),
 };

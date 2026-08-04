@@ -24,7 +24,7 @@ describe("api client", () => {
 
   it("returns undefined for a 204 No Content response", async () => {
     mockFetchOnce({ ok: true, status: 204, json: () => Promise.reject("no body") });
-    const result = await api.deleteTask(1);
+    const result = await api.deleteDocument("users", "ada");
     expect(result).toBeUndefined();
   });
 
@@ -35,15 +35,15 @@ describe("api client", () => {
       statusText: "Bad Request",
       json: () =>
         Promise.resolve({
-          error: { code: "BAD_REQUEST", message: "task title must not be empty" },
+          error: { code: "BAD_REQUEST", message: "documents must be JSON objects" },
         }),
     });
 
-    await expect(api.createTask("")).rejects.toMatchObject({
+    await expect(api.createDocument("users", {})).rejects.toMatchObject({
       name: "ApiError",
       code: "BAD_REQUEST",
       status: 400,
-      message: "task title must not be empty",
+      message: "documents must be JSON objects",
     });
   });
 

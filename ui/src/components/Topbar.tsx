@@ -5,7 +5,8 @@ import ThemeToggle from "./ThemeToggle";
 
 const TITLES: Record<string, string> = {
   "/": "Dashboard",
-  "/components": "Components",
+  "/collections": "Collections",
+  "/playground": "API Playground",
   "/settings": "Settings",
 };
 

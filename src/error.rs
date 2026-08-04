@@ -24,6 +24,9 @@ pub enum AppError {
     #[error("{0}")]
     NotFound(String),
 
+    #[error("{0}")]
+    Conflict(String),
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -36,6 +39,7 @@ impl AppError {
         match self {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Config(_) | AppError::Io(_) | AppError::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -47,6 +51,7 @@ impl AppError {
             AppError::Config(_) => "CONFIG_ERROR",
             AppError::BadRequest(_) => "BAD_REQUEST",
             AppError::NotFound(_) => "NOT_FOUND",
+            AppError::Conflict(_) => "CONFLICT",
             AppError::Io(_) => "IO_ERROR",
             AppError::Internal(_) => "INTERNAL",
         }
@@ -67,9 +72,10 @@ impl IntoResponse for AppError {
         // local file paths or OS error text, so those get a generic
         // message instead; the real detail already went to tracing above.
         let message = match &self {
-            AppError::BadRequest(_) | AppError::NotFound(_) | AppError::Internal(_) => {
-                self.to_string()
-            }
+            AppError::BadRequest(_)
+            | AppError::NotFound(_)
+            | AppError::Conflict(_)
+            | AppError::Internal(_) => self.to_string(),
             AppError::Config(_) | AppError::Io(_) => "an internal error occurred".to_string(),
         };
         let body = json!({
@@ -106,10 +112,10 @@ mod tests {
 
     #[tokio::test]
     async fn not_found_maps_to_404_with_its_own_message() {
-        let body = body_json(AppError::NotFound("task 1 does not exist".into())).await;
+        let body = body_json(AppError::NotFound("document 1 does not exist".into())).await;
         assert_eq!(body["error"]["code"], "NOT_FOUND");
         assert_eq!(body["error"]["status"], 404);
-        assert_eq!(body["error"]["message"], "task 1 does not exist");
+        assert_eq!(body["error"]["message"], "document 1 does not exist");
     }
 
     #[tokio::test]

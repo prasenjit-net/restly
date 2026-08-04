@@ -17,8 +17,18 @@ use crate::config::AppConfig;
 use crate::state::AppState;
 
 async fn test_app() -> Router {
-    // AppConfig::default() has no access_log path, so tests never touch disk.
-    let state = Arc::new(AppState::new(AppConfig::default()).await);
+    // Keep document persistence isolated per test app while still exercising
+    // the real on-disk store and its recovery path.
+    let data_dir = std::env::temp_dir().join(format!(
+        "restly-test-{}-{}",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    let state = Arc::new(
+        AppState::with_data_dir(AppConfig::default(), data_dir)
+            .await
+            .unwrap(),
+    );
     crate::routes::router(state)
 }
 
@@ -82,126 +92,137 @@ async fn config_exposes_ui_section_camel_cased() {
 }
 
 #[tokio::test]
-async fn tasks_seed_list_has_three_items() {
-    let app = test_app().await;
-    let res = app
-        .oneshot(request(Method::GET, "/api/tasks"))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let body = body_json(res).await;
-    assert_eq!(body.as_array().unwrap().len(), 3);
-}
-
-#[tokio::test]
-async fn create_task_then_list_reflects_it() {
+async fn data_api_creates_queries_updates_and_deletes_documents() {
     let app = test_app().await;
 
-    let create = app
+    let created = app
         .clone()
         .oneshot(json_request(
             Method::POST,
-            "/api/tasks",
-            serde_json::json!({ "title": "Write tests" }),
+            "/data/products",
+            serde_json::json!({ "name": "Keyboard", "price": 120, "active": true }),
         ))
         .await
         .unwrap();
-    assert_eq!(create.status(), StatusCode::CREATED);
-    let created = body_json(create).await;
-    assert_eq!(created["title"], "Write tests");
-    assert_eq!(created["done"], false);
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created = body_json(created).await;
+    let id = created["_id"].as_str().unwrap().to_string();
+    assert_eq!(created["name"], "Keyboard");
+    assert!(created["_createdAt"].is_string());
 
-    let list = app
-        .oneshot(request(Method::GET, "/api/tasks"))
-        .await
-        .unwrap();
-    let body = body_json(list).await;
-    assert_eq!(body.as_array().unwrap().len(), 4);
-}
-
-#[tokio::test]
-async fn create_task_with_empty_title_is_rejected() {
-    let app = test_app().await;
-    let res = app
-        .oneshot(json_request(
-            Method::POST,
-            "/api/tasks",
-            serde_json::json!({ "title": "   " }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-    let body = body_json(res).await;
-    assert_eq!(body["error"]["code"], "BAD_REQUEST");
-}
-
-#[tokio::test]
-async fn toggle_unknown_task_is_not_found() {
-    let app = test_app().await;
-    let res = app
-        .oneshot(request(Method::POST, "/api/tasks/999/toggle"))
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
-    let body = body_json(res).await;
-    assert_eq!(body["error"]["code"], "NOT_FOUND");
-}
-
-#[tokio::test]
-async fn toggle_then_delete_existing_task() {
-    let app = test_app().await;
-
-    let toggled = app
+    let listed = app
         .clone()
-        .oneshot(request(Method::POST, "/api/tasks/1/toggle"))
+        .oneshot(request(
+            Method::GET,
+            "/data/products?where.active=true&sort=-price",
+        ))
         .await
         .unwrap();
-    assert_eq!(toggled.status(), StatusCode::OK);
-    let toggled_body = body_json(toggled).await;
-    // Seed task 1 starts done=true (see TaskStore::with_examples).
-    assert_eq!(toggled_body["done"], false);
+    assert_eq!(listed.status(), StatusCode::OK);
+    let listed = body_json(listed).await;
+    assert_eq!(listed["total"], 1);
+    assert_eq!(listed["data"][0]["_id"], id);
+
+    let updated = app
+        .clone()
+        .oneshot(json_request(
+            Method::PATCH,
+            &format!("/data/products/{id}"),
+            serde_json::json!({ "price": 99, "spec": { "wireless": true } }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), StatusCode::OK);
+    let updated = body_json(updated).await;
+    assert_eq!(updated["price"], 99);
+    assert_eq!(updated["spec"]["wireless"], true);
+    assert_eq!(updated["_createdAt"], created["_createdAt"]);
 
     let deleted = app
         .clone()
-        .oneshot(request(Method::DELETE, "/api/tasks/1"))
+        .oneshot(request(Method::DELETE, &format!("/data/products/{id}")))
         .await
         .unwrap();
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
 
-    let list = app
-        .oneshot(request(Method::GET, "/api/tasks"))
-        .await
-        .unwrap();
-    let body = body_json(list).await;
-    assert_eq!(body.as_array().unwrap().len(), 2);
-}
-
-#[tokio::test]
-async fn error_demo_kinds_map_to_the_right_status_and_code() {
-    let app = test_app().await;
-
-    let bad = app
-        .clone()
-        .oneshot(request(Method::GET, "/api/error-demo?kind=bad-request"))
-        .await
-        .unwrap();
-    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(body_json(bad).await["error"]["code"], "BAD_REQUEST");
-
     let missing = app
-        .clone()
-        .oneshot(request(Method::GET, "/api/error-demo?kind=not-found"))
+        .oneshot(request(Method::GET, &format!("/data/products/{id}")))
         .await
         .unwrap();
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
-    assert_eq!(body_json(missing).await["error"]["code"], "NOT_FOUND");
+}
 
-    let internal = app
-        .oneshot(request(Method::GET, "/api/error-demo?kind=internal"))
+#[tokio::test]
+async fn data_api_supports_nested_collections_and_put_upserts() {
+    let app = test_app().await;
+    let parent = app
+        .clone()
+        .oneshot(json_request(
+            Method::PUT,
+            "/data/users/ada",
+            serde_json::json!({ "name": "Ada" }),
+        ))
         .await
         .unwrap();
-    assert_eq!(internal.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(body_json(internal).await["error"]["code"], "INTERNAL");
+    assert_eq!(parent.status(), StatusCode::CREATED);
+
+    let child = app
+        .clone()
+        .oneshot(json_request(
+            Method::POST,
+            "/data/users/ada/orders",
+            serde_json::json!({ "total": 32 }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(child.status(), StatusCode::CREATED);
+    let child = body_json(child).await;
+    assert_eq!(child["_parent"]["collection"], "users");
+    assert_eq!(child["_parent"]["id"], "ada");
+
+    let protected_parent = app
+        .clone()
+        .oneshot(request(Method::DELETE, "/data/users/ada"))
+        .await
+        .unwrap();
+    assert_eq!(protected_parent.status(), StatusCode::CONFLICT);
+
+    let upsert = app
+        .oneshot(json_request(
+            Method::PUT,
+            "/data/users/grace",
+            serde_json::json!({ "name": "Grace" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(upsert.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn data_root_and_admin_collection_routes_list_auto_created_collections() {
+    let app = test_app().await;
+    let created = app
+        .clone()
+        .oneshot(json_request(
+            Method::POST,
+            "/data/logs",
+            serde_json::json!({ "message": "started" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+
+    for endpoint in ["/data", "/api/collections"] {
+        let response = app
+            .clone()
+            .oneshot(request(Method::GET, endpoint))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response).await;
+        assert_eq!(body["data"][0]["name"], "logs");
+        assert_eq!(body["data"][0]["count"], 1);
+    }
 }
 
 #[tokio::test]

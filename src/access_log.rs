@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn passes_through_ordinary_paths() {
-        assert_eq!(escape_log_field("/api/tasks?x=1"), "/api/tasks?x=1");
+        assert_eq!(escape_log_field("/data/users?x=1"), "/data/users?x=1");
     }
 
     #[test]

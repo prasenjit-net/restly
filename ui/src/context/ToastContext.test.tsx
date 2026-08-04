@@ -11,7 +11,7 @@ function Consumer() {
     <div>
       <button onClick={() => push("success", "Saved cleanly")}>push-success</button>
       <button onClick={() => push("error", "Something broke")}>push-error</button>
-      <button onClick={() => notifyError(new ApiError("NOT_FOUND", 404, "task 1 does not exist"))}>
+      <button onClick={() => notifyError(new ApiError("NOT_FOUND", 404, "document 1 does not exist"))}>
         notify-api-error
       </button>
       <button onClick={() => notifyError(new Error("plain failure"))}>notify-plain-error</button>
@@ -53,7 +53,7 @@ describe("ToastContext", () => {
 
     const region = screen.getByRole("status");
     expect(within(region).getByText("NOT_FOUND · 404")).toBeInTheDocument();
-    expect(within(region).getByText("task 1 does not exist")).toBeInTheDocument();
+    expect(within(region).getByText("document 1 does not exist")).toBeInTheDocument();
   });
 
   it("falls back to a generic Error's message", async () => {

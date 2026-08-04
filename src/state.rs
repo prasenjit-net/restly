@@ -6,15 +6,15 @@ use tokio::sync::{broadcast, RwLock};
 
 use crate::access_log::AccessLog;
 use crate::config::AppConfig;
+use crate::services::documents::DocumentStore;
 use crate::services::events::Event;
 use crate::services::metrics::MetricsSnapshot;
-use crate::services::tasks::TaskStore;
 
 pub struct AppState {
     pub config: AppConfig,
     /// Fan-out channel feeding every connected WebSocket client.
     pub events: broadcast::Sender<Event>,
-    pub tasks: TaskStore,
+    pub documents: DocumentStore,
     pub latest_metrics: RwLock<Option<MetricsSnapshot>>,
     pub requests_total: AtomicU64,
     pub ws_clients: AtomicUsize,
@@ -26,12 +26,20 @@ pub struct AppState {
 pub type SharedState = Arc<AppState>;
 
 impl AppState {
-    pub async fn new(config: AppConfig) -> Self {
+    pub async fn new(config: AppConfig) -> crate::error::AppResult<Self> {
+        Self::with_data_dir(config, "data").await
+    }
+
+    pub async fn with_data_dir(
+        config: AppConfig,
+        data_dir: impl AsRef<std::path::Path>,
+    ) -> crate::error::AppResult<Self> {
         let (events, _) = broadcast::channel(64);
         let access_log = AccessLog::open(config.logging.access_log.as_deref()).await;
-        Self {
+        let documents = DocumentStore::open(data_dir).await?;
+        Ok(Self {
             events,
-            tasks: TaskStore::with_examples(),
+            documents,
             latest_metrics: RwLock::new(None),
             requests_total: AtomicU64::new(0),
             ws_clients: AtomicUsize::new(0),
@@ -39,7 +47,7 @@ impl AppState {
             started_at_ms: chrono::Utc::now().timestamp_millis(),
             access_log,
             config,
-        }
+        })
     }
 
     pub fn broadcast(&self, event: Event) {

@@ -6,7 +6,7 @@ use crate::services::metrics::MetricsSnapshot;
 /// discriminated by a `type` field, e.g.:
 ///
 /// ```json
-/// { "type": "activity", "kind": "task", "message": "…", "timestampMs": 0 }
+/// { "type": "activity", "kind": "document", "message": "…", "timestampMs": 0 }
 /// ```
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]

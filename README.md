@@ -1,200 +1,123 @@
-# restly
+# Restly
 
-[![CI](https://github.com/prasenjit-net/restly/actions/workflows/ci.yml/badge.svg)](https://github.com/prasenjit-net/restly/actions/workflows/ci.yml)
+Restly is a no-configuration JSON document store. It runs as one Rust binary,
+persists data on the local filesystem, exposes convention-based REST resources
+under `/data/**`, and includes an embedded admin UI for monitoring, editing,
+and exercising the API.
 
-Restly is a single-binary Rust + React application foundation for a
-convention-driven JSON data store. It currently ships an
-[Axum](https://github.com/tokio-rs/axum) REST + WebSocket backend with a React
-(Vite + TypeScript) SPA embedded straight into the executable.
-
-## Features
-
-- **REST backend** — Axum with a typed error framework (`AppError` → consistent
-  JSON error envelope on every endpoint)
-- **Embedded SPA** — `ui/dist` is compiled into the binary with `rust-embed`;
-  deep links work via the SPA fallback, fingerprinted assets get immutable
-  cache headers, unknown `/api/*` paths still return JSON 404s
-- **Greptile-inspired theme** — light-gray canvas with a faint emerald grid,
-  dark purple-slate ink, mint/emerald accents, and monospace meta text, built
-  on **Tailwind CSS v4**, plus a bespoke 24×24 stroke **icon pack**
-- **Light / dark / auto theme** — applied before first paint, follows the OS in
-  auto mode, visitor override persisted in `localStorage`
-- **Dashboard UI** — stat tiles with sparklines, a live two-series chart with
-  crosshair + tooltip (colors validated for contrast and color-vision safety in
-  both modes), activity feed, tasks card
-- **Example service** — an in-memory tasks CRUD (`/api/tasks`) demonstrating
-  validation, 404s, and activity broadcasting
-- **Example page** — a component gallery (buttons, badges, forms, alerts,
-  table, progress, skeletons) with live error-pipeline demos
-- **Responsive + collapsible sidebar** — the topbar hamburger toggles the
-  sidebar between icon+text and an icon-only rail on desktop (choice
-  persisted), and opens it as an overlay drawer on mobile; layouts collapse
-  down to phone widths
-- **UI configured by the backend** — the SPA boots from `GET /api/config`,
-  which serves the `[ui]` section of `config.toml` (app name, tagline, default
-  theme, repo link)
-- **TOML configuration + CLI overrides** — every value in `config.toml` can be
-  overridden with a flag (`--port`, `--host`, `--log-level`, `--access-log`,
-  `--no-access-log`, `--config <path>`)
-- **Access log** — per-request Common-Log-style lines to console (tracing
-  target `access`) and optionally to a file
-- **Error handling end to end** — backend errors arrive in the UI as
-  notification bubbles (toasts) carrying the server's error code; render
-  crashes are caught by nested error boundaries
-- **Server push** — a WebSocket at `/ws` streams metrics every 2s plus
-  activity events, with auto-reconnect and connection-status toasts
-- **Unique favicon** — a mint-on-slate gear-and-bolt SVG, mirrored by the
-  in-app logo
+No collection definitions are required. A collection is created the first time
+a document is written to it.
 
 ## Quick start
 
-Prerequisites: Rust (stable) and Node 18+.
-
 ```sh
-# 1. Build the frontend (embedded by the Rust build)
 cd ui && npm install && npm run build && cd ..
-
-# 2. Build + run the single binary
 cargo run --release
-# → http://127.0.0.1:8080
 ```
 
-Or just `make build` / `make run`.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Restly creates a local
+`data/` directory beside the binary's working directory when the first
+document is stored. That directory is intentionally ignored by Git.
 
-### Development (hot reload)
+During development, run `cargo run` on port 8080 and `cd ui && npm run dev`
+on port 5173. The Vite server proxies `/api`, `/data`, and `/ws`.
 
-Run the two dev servers side by side:
+## Data API
+
+All application documents live under `/data`. `/api/**` is reserved for
+Restly's monitoring and admin APIs, while `/` serves the admin UI.
+
+| Method | Path | Operation |
+| --- | --- | --- |
+| GET | `/data` | List discovered collections |
+| GET | `/data/{collection}` | Find documents |
+| POST | `/data/{collection}` | Insert a document |
+| GET | `/data/{collection}/{id}` | Find one document |
+| PUT | `/data/{collection}/{id}` | Replace or upsert a document |
+| PATCH | `/data/{collection}/{id}` | Apply a JSON merge patch |
+| DELETE | `/data/{collection}/{id}` | Delete a document |
+| GET/POST | `/data/{collection}/{id}/{sub_collection}` | Nested collection operations |
+
+For example:
 
 ```sh
-cargo run                # terminal 1 — backend on :8080
-cd ui && npm run dev     # terminal 2 — Vite on :5173, proxies /api and /ws
+curl -X POST http://127.0.0.1:8080/data/users \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada","active":true,"profile":{"level":4}}'
+
+curl 'http://127.0.0.1:8080/data/users?where.active=true&sort=-_updatedAt&limit=25'
+
+curl -X PUT http://127.0.0.1:8080/data/users/ada \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada Lovelace"}'
+
+curl -X POST http://127.0.0.1:8080/data/users/ada/orders \
+  -H 'content-type: application/json' \
+  -d '{"total":32,"currency":"GBP"}'
 ```
 
-Open http://localhost:5173. In debug builds `rust-embed` reads `ui/dist` from
-disk, so a production `npm run build` is picked up by a plain restart too.
+Documents must be JSON objects. Restly supplies `_id`, `_createdAt`, and
+`_updatedAt`; nested documents also receive `_parent`. Fields beginning with
+`_` are reserved.
 
-## CLI
+### Querying
 
-```
-restly [OPTIONS]
+`GET /data/{collection}` accepts these query parameters:
 
-  -c, --config <CONFIG>        Path to the TOML configuration file [default: config.toml]
-      --host <HOST>            Override [server].host
-  -p, --port <PORT>            Override [server].port
-      --log-level <LOG_LEVEL>  Override [logging].level (trace, debug, info, warn, error)
-      --access-log <PATH>      Override [logging].access_log file path
-      --no-access-log          Disable the access log file entirely
-```
+| Parameter | Example | Meaning |
+| --- | --- | --- |
+| `limit` | `limit=50` | Results per page, 1-1000, default 50 |
+| `cursor` | `cursor=d_...` | Continue after the returned `nextCursor` |
+| `sort` | `sort=-createdAt,name` | Comma-separated fields; `-` is descending |
+| `where.{field}` | `where.active=true` | Exact match; dot paths are supported |
+| `where.{field}.{op}` | `where.price.gte=10` | `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`, `prefix`, `exists` |
 
-## Configuration (`config.toml`)
+List responses contain `{ data, page, total }`. Every scalar document field,
+including nested scalar fields, is automatically indexed in memory for exact
+matches. Indexes are rebuilt from local data when a collection is loaded, so
+they never need configuration or separate index files.
 
-| Key | Default | Meaning |
-|---|---|---|
-| `server.host` | `127.0.0.1` | Bind address |
-| `server.port` | `8080` | Bind port |
-| `logging.level` | `info` | Tracing filter (full directives allowed, e.g. `info,access=warn`) |
-| `logging.access_log` | *(unset)* | Access-log file path; omit to disable the file |
-| `ui.app_name` | `Restly` | Shown in the sidebar + browser title |
-| `ui.tagline` | … | Shown under the app name |
-| `ui.default_theme` | `auto` | `light` \| `dark` \| `auto` — used until the visitor picks |
-| `ui.repo_url` | *(unset)* | Sidebar "Repository" link |
+## Storage
 
-If the config file is missing, built-in defaults are used (with a warning).
+Collections are stored below `data/collections/` in directories that mirror
+their resource path. Writes are appended to a JSONL write-ahead journal and
+flushed before the in-memory state changes. After 100 changes, Restly writes a
+compact `snapshot.json` and clears that journal. On startup, Restly rebuilds a
+collection from its snapshot and journal, recovering committed writes without
+an external database.
 
-## API
+## Admin API and UI
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/health` | Liveness + version |
-| GET | `/api/config` | UI bootstrap config (the `[ui]` table, camelCased) |
-| GET | `/api/metrics` | Latest metrics snapshot |
-| GET | `/api/tasks` | List tasks |
-| POST | `/api/tasks` | Create (`{"title": "…"}`; empty title → 400) |
-| POST | `/api/tasks/{id}/toggle` | Toggle done |
-| DELETE | `/api/tasks/{id}` | Delete (204) |
-| GET | `/api/error-demo?kind=…` | Always fails (`internal`, `bad-request`, `not-found`) |
-| GET | `/ws` | WebSocket: server-push events |
+The embedded UI has a dashboard, collection/document editor, and API
+playground. Its supporting endpoints stay outside the data namespace:
 
-Errors always look like:
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | Server liveness and version |
+| GET | `/api/config` | UI bootstrap configuration |
+| GET | `/api/metrics` | Request, connection, and uptime metrics |
+| GET | `/api/stats` | Collection/document totals and data directory |
+| GET | `/api/collections` | Collection names, counts, and automatic indexes |
+| POST | `/api/maintenance/compact` | Compact all loaded collections |
+| GET | `/ws` | Live metrics and document activity |
+
+Errors use a consistent JSON envelope:
 
 ```json
-{ "error": { "code": "NOT_FOUND", "message": "task 42 does not exist", "status": 404 } }
+{ "error": { "code": "NOT_FOUND", "message": "document x does not exist", "status": 404 } }
 ```
 
-WebSocket events are JSON discriminated by `type`:
+## Configuration
 
-```json
-{ "type": "metrics",  "data": { "cpu": 41.3, "memory": 58.0, "...": "…" } }
-{ "type": "activity", "kind": "task", "message": "Task \"x\" created", "timestampMs": 0 }
-{ "type": "hello",    "message": "Connected to Restly v0.1.0", "timestampMs": 0 }
-```
+`config.toml` controls only server, logging, and UI presentation settings.
+It is not used to declare schemas, collections, indexes, or routes. CLI flags
+can override the host, port, logging level, access-log path, and config path.
 
-## Project structure
-
-```
-├── config.toml               server + UI configuration
-├── src/
-│   ├── main.rs               CLI (clap) + startup
-│   ├── config.rs             TOML config model
-│   ├── error.rs              AppError → JSON error envelope
-│   ├── access_log.rs         access-log middleware (console + file)
-│   ├── static_assets.rs      embedded SPA + fallback routing
-│   ├── routes/               api.rs (REST) · ws.rs (server push)
-│   └── services/             metrics.rs · tasks.rs · events.rs
-└── ui/
-    ├── public/favicon.svg    the gear-and-bolt mark
-    └── src/
-        ├── lib/api.ts        typed client + ApiError
-        ├── icons/            the icon pack (add icons here)
-        ├── context/          Theme · Toast · Config · Live(WebSocket)
-        ├── components/       layout, cards, chart, feed, controls
-        ├── pages/            Dashboard · Components · Settings · 404
-        └── styles/           index.css (Tailwind v4 entry + theme tokens)
-```
-
-## Extending
-
-**New endpoint** — add a handler in `src/routes/api.rs` returning
-`AppResult<Json<T>>`, register it in `src/routes/mod.rs`, add a typed wrapper
-in `ui/src/lib/api.ts`.
-
-**New page** — create `ui/src/pages/X.tsx`, add a `<Route>` in `App.tsx` and a
-nav item in `components/Sidebar.tsx` (plus a title in `Topbar.tsx`).
-
-**New server-push event** — add a variant to `Event` in
-`src/services/events.rs`, broadcast it via `state.broadcast(…)`, handle its
-`type` in `ui/src/context/LiveContext.tsx`.
-
-**Theming** — the design tokens live at the top of `ui/src/styles/index.css`
-(one block per mode, registered as Tailwind colors via `@theme inline`).
-Change the accent or surfaces there; every `bg-surface` / `text-ink` /
-`bg-accent` utility picks the new values up in both light and dark mode.
-
-## Testing
+## Verification
 
 ```sh
-cargo test                 # backend: unit + full HTTP router integration tests
-cd ui && npm test          # frontend: Vitest + Testing Library
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cd ui && npm test && npm run build
 ```
-
-`cargo clippy --all-targets -- -D warnings` and `cargo fmt --all -- --check` are
-also run in CI.
-
-## CI & releases
-
-- **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every
-  pull request: frontend test + build, `cargo fmt`/`clippy`, and `cargo test` +
-  `cargo build --release` on Linux, macOS, and Windows.
-- **Release** (`.github/workflows/release.yml`) is manual
-  (Actions → Release → Run workflow) and takes a `bump` input of `patch`,
-  `minor`, or `major`. It re-runs the test suite, bumps `Cargo.toml` (the
-  source of `CARGO_PKG_VERSION`, shown at `/api/health`, `/api/config`, and
-  `--version`) and `ui/package.json` to match, commits and tags
-  `vX.Y.Z` on `main`, then builds and publishes binaries for Linux
-  (x86_64), macOS (Intel + Apple Silicon), and Windows (x86_64) as a
-  GitHub Release, each archive bundling the binary with `README.md`,
-  `LICENSE`, and a sample `config.toml`.
-
-## License
-
-[MIT](LICENSE)

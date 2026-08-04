@@ -3,22 +3,24 @@ import type { ReactElement } from "react";
 import { useConfig } from "../context/ConfigContext";
 import {
   IconDashboard,
+  IconDatabase,
   IconExternal,
-  IconLayers,
+  IconBolt,
   IconSliders,
   IconX,
 } from "../icons";
 import Logo from "./Logo";
 
 interface NavItem {
-  to: "/" | "/components" | "/settings";
+  to: "/" | "/collections" | "/playground" | "/settings";
   label: string;
   icon: ReactElement;
 }
 
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: <IconDashboard size={20} /> },
-  { to: "/components", label: "Components", icon: <IconLayers size={20} /> },
+  { to: "/collections", label: "Collections", icon: <IconDatabase size={20} /> },
+  { to: "/playground", label: "API Playground", icon: <IconBolt size={20} /> },
   { to: "/settings", label: "Settings", icon: <IconSliders size={20} /> },
 ];
 

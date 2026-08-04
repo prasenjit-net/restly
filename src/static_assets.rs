@@ -17,8 +17,8 @@ struct Assets;
 pub async fn handler(State(state): State<SharedState>, uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
 
-    // Unknown /api routes get the JSON 404 envelope, not the SPA shell.
-    if path.starts_with("api/") {
+    // Unknown API and document routes get the JSON 404 envelope, not the SPA shell.
+    if path.starts_with("api/") || path.starts_with("data/") || path == "data" {
         return AppError::NotFound(format!("no such endpoint: /{path}")).into_response();
     }
 
