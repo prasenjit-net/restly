@@ -91,12 +91,12 @@ jobs:
         run: |
           set -euo pipefail
           cargo set-version --bump "${{ inputs.bump }}"
-          cargo update -p rusty-template
+          cargo update -p rustly
           version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
 
           # Keep the frontend's own package.json version in sync — the
           # running app doesn't read it, but it's confusing for the two
-          # halves of a "fullstack" template to drift.
+          # halves of the app to drift.
           (cd ui && npm version "$version" --no-git-tag-version --allow-same-version)
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -166,9 +166,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stage="rusty-template-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
+          stage="rustly-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
           mkdir "$stage"
-          cp "target/${{ matrix.target }}/release/rusty-template" "$stage/"
+          cp "target/${{ matrix.target }}/release/rustly" "$stage/"
           cp README.md LICENSE config.toml "$stage/"
           tar -czf "$stage.tar.gz" "$stage"
           shasum -a 256 "$stage.tar.gz" > "$stage.tar.gz.sha256"
@@ -177,9 +177,9 @@ jobs:
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $stage = "rusty-template-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
+          $stage = "rustly-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $stage | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/rusty-template.exe" -Destination $stage
+          Copy-Item "target/${{ matrix.target }}/release/rustly.exe" -Destination $stage
           Copy-Item README.md, LICENSE, config.toml -Destination $stage
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
           Get-FileHash "$stage.zip" -Algorithm SHA256 |
@@ -190,10 +190,10 @@ jobs:
         with:
           name: package-${{ matrix.target }}
           path: |
-            rusty-template-*.tar.gz
-            rusty-template-*.tar.gz.sha256
-            rusty-template-*.zip
-            rusty-template-*.zip.sha256
+            rustly-*.tar.gz
+            rustly-*.tar.gz.sha256
+            rustly-*.zip
+            rustly-*.zip.sha256
           if-no-files-found: error
 
   release:

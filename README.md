@@ -1,10 +1,11 @@
-# rusty-template
+# rustly
 
-[![CI](https://github.com/prasenjit-net/rusty-template/actions/workflows/ci.yml/badge.svg)](https://github.com/prasenjit-net/rusty-template/actions/workflows/ci.yml)
+[![CI](https://github.com/prasenjit-net/rustly/actions/workflows/ci.yml/badge.svg)](https://github.com/prasenjit-net/rustly/actions/workflows/ci.yml)
 
-A **single-binary fullstack template**: an [Axum](https://github.com/tokio-rs/axum)
-REST + WebSocket backend with a React (Vite + TypeScript) SPA embedded straight
-into the executable. Build once, ship one file.
+Rustly is a single-binary Rust + React application foundation for a
+convention-driven JSON data store. It currently ships an
+[Axum](https://github.com/tokio-rs/axum) REST + WebSocket backend with a React
+(Vite + TypeScript) SPA embedded straight into the executable.
 
 ## Features
 
@@ -75,7 +76,7 @@ disk, so a production `npm run build` is picked up by a plain restart too.
 ## CLI
 
 ```
-rusty-template [OPTIONS]
+rustly [OPTIONS]
 
   -c, --config <CONFIG>        Path to the TOML configuration file [default: config.toml]
       --host <HOST>            Override [server].host
@@ -93,7 +94,7 @@ rusty-template [OPTIONS]
 | `server.port` | `8080` | Bind port |
 | `logging.level` | `info` | Tracing filter (full directives allowed, e.g. `info,access=warn`) |
 | `logging.access_log` | *(unset)* | Access-log file path; omit to disable the file |
-| `ui.app_name` | `Rusty Template` | Shown in the sidebar + browser title |
+| `ui.app_name` | `Rustly` | Shown in the sidebar + browser title |
 | `ui.tagline` | … | Shown under the app name |
 | `ui.default_theme` | `auto` | `light` \| `dark` \| `auto` — used until the visitor picks |
 | `ui.repo_url` | *(unset)* | Sidebar "Repository" link |
@@ -125,7 +126,7 @@ WebSocket events are JSON discriminated by `type`:
 ```json
 { "type": "metrics",  "data": { "cpu": 41.3, "memory": 58.0, "...": "…" } }
 { "type": "activity", "kind": "task", "message": "Task \"x\" created", "timestampMs": 0 }
-{ "type": "hello",    "message": "Connected to Rusty Template v0.1.0", "timestampMs": 0 }
+{ "type": "hello",    "message": "Connected to Rustly v0.1.0", "timestampMs": 0 }
 ```
 
 ## Project structure
@@ -192,7 +193,7 @@ also run in CI.
   `vX.Y.Z` on `main`, then builds and publishes binaries for Linux
   (x86_64), macOS (Intel + Apple Silicon), and Windows (x86_64) as a
   GitHub Release, each archive bundling the binary with `README.md`,
-  `LICENSE`, and a starter `config.toml`.
+  `LICENSE`, and a sample `config.toml`.
 
 ## License
 

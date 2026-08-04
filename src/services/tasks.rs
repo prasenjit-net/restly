@@ -32,7 +32,7 @@ pub struct TaskStore {
 impl TaskStore {
     pub fn with_examples() -> Self {
         let seed = [
-            "Read the template README",
+            "Read the Rustly README",
             "Wire up a real database",
             "Ship something",
         ];

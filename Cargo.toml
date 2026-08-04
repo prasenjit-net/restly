@@ -1,8 +1,8 @@
 [package]
-name = "rusty-template"
+name = "rustly"
 version = "0.1.0"
 edition = "2021"
-description = "Single-binary fullstack template: Axum REST API + embedded React (Vite) SPA"
+description = "No-config JSON data store foundation with an Axum REST API and embedded React SPA"
 
 [dependencies]
 axum = { version = "0.8", features = ["ws"] }

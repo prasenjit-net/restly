@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## Project Overview
 
-`rusty-template` is a single-binary fullstack template:
+`rustly` is a single-binary Rust + React application:
 
 - Rust backend using Axum, Tokio, Clap, Serde, Tracing, and `rust-embed`.
 - React frontend under `ui/`, built with Vite, TypeScript, Tailwind CSS v4, TanStack Router, and TanStack Query.
@@ -76,4 +76,3 @@ Development servers:
 - Runtime config defaults to `config.toml`.
 - CLI flags can override config values such as host, port, log level, access log, and config path.
 - UI boot configuration is served from `GET /api/config` based on the `[ui]` section of `config.toml`.
-
