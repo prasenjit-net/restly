@@ -9,6 +9,7 @@ use axum::response::Response;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
+use crate::services::observability::RequestTrace;
 use crate::state::SharedState;
 
 /// Append-only access log file. Independent of the file, every request
@@ -61,6 +62,7 @@ pub async fn record(
 ) -> Response {
     let started = Instant::now();
     let method = req.method().clone();
+    let path = req.uri().path().to_string();
     let uri = escape_log_field(&req.uri().to_string());
     let version = req.version();
 
@@ -75,6 +77,16 @@ pub async fn record(
 
     tracing::info!(target: "access", "{line}");
     state.access_log.write_line(&line).await;
+    state
+        .request_traces
+        .record(RequestTrace {
+            method: method.to_string(),
+            path,
+            status,
+            duration_ms: elapsed_ms,
+            timestamp_ms: chrono::Utc::now().timestamp_millis(),
+        })
+        .await;
 
     response
 }

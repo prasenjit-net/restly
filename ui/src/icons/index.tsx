@@ -74,6 +74,24 @@ export const IconX = icon(<path d="m6 6 12 12M18 6 6 18" />);
 
 export const IconPlus = icon(<path d="M12 5v14M5 12h14" />);
 
+export const IconPlay = icon(<path d="m8 5 11 7-11 7V5z" />);
+
+export const IconSave = icon(
+  <>
+    <path d="M5 3h12l3 3v15H4V4a1 1 0 0 1 1-1z" />
+    <path d="M8 3v6h8V3M8 21v-7h8v7" />
+  </>,
+);
+
+export const IconCopy = icon(
+  <>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+  </>,
+);
+
+export const IconRefresh = icon(<path d="M20 7v5h-5M4 17v-5h5M6.2 9A7 7 0 0 1 18.6 6L20 7M4 17l1.4 1A7 7 0 0 0 17.8 15" />);
+
 export const IconTrash = icon(
   <>
     <path d="M4 7h16" />

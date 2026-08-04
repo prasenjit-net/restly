@@ -9,6 +9,7 @@ use crate::config::AppConfig;
 use crate::services::documents::DocumentStore;
 use crate::services::events::Event;
 use crate::services::metrics::MetricsSnapshot;
+use crate::services::observability::RequestTraces;
 
 pub struct AppState {
     pub config: AppConfig,
@@ -16,6 +17,7 @@ pub struct AppState {
     pub events: broadcast::Sender<Event>,
     pub documents: DocumentStore,
     pub latest_metrics: RwLock<Option<MetricsSnapshot>>,
+    pub request_traces: RequestTraces,
     pub requests_total: AtomicU64,
     pub ws_clients: AtomicUsize,
     pub started: Instant,
@@ -41,6 +43,7 @@ impl AppState {
             events,
             documents,
             latest_metrics: RwLock::new(None),
+            request_traces: RequestTraces::new(),
             requests_total: AtomicU64::new(0),
             ws_clients: AtomicUsize::new(0),
             started: Instant::now(),
