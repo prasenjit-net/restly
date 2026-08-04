@@ -307,13 +307,26 @@ impl DocumentStore {
         self.ensure_parent(path).await?;
         validate_segment(id, false)?;
         self.ensure_loaded(&path.key).await?;
-        let mut state = self.state.write().await;
         let descendants = format!("{}/{id}/", path.key);
-        if state
-            .known_collections
-            .iter()
-            .any(|name| name.starts_with(&descendants))
-        {
+        let descendant_keys = {
+            let state = self.state.read().await;
+            state
+                .known_collections
+                .iter()
+                .filter(|name| name.starts_with(&descendants))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        for key in &descendant_keys {
+            self.ensure_loaded(key).await?;
+        }
+        let mut state = self.state.write().await;
+        if descendant_keys.iter().any(|key| {
+            state
+                .collections
+                .get(key)
+                .is_some_and(|collection| !collection.documents.is_empty())
+        }) {
             return Err(AppError::Conflict(format!(
                 "document {id} has nested collections; delete those documents first"
             )));
@@ -328,7 +341,9 @@ impl DocumentStore {
                 path.display
             )));
         }
-        self.record_delete_locked(&mut state, &path.key, id).await
+        self.record_delete_locked(&mut state, &path.key, id).await?;
+        self.prune_empty_collection_locked(&mut state, &path.key)
+            .await
     }
 
     pub async fn collections(&self) -> AppResult<Vec<CollectionInfo>> {
@@ -343,9 +358,12 @@ impl DocumentStore {
         for key in &keys {
             self.ensure_loaded(key).await?;
         }
+        self.prune_empty_collections(&keys).await?;
         let state = self.state.read().await;
-        Ok(keys
-            .into_iter()
+        Ok(state
+            .known_collections
+            .iter()
+            .cloned()
             .map(|name| {
                 let collection = state
                     .collections
@@ -505,6 +523,52 @@ impl DocumentStore {
         if collection.pending_entries >= COMPACTION_THRESHOLD {
             self.compact_locked(state, key).await?;
         }
+        Ok(())
+    }
+
+    async fn prune_empty_collections(&self, keys: &[String]) -> AppResult<()> {
+        let mut keys = keys.to_vec();
+        // Removing a parent path also removes any empty descendant directories.
+        keys.sort_by_key(|key| std::cmp::Reverse(key.len()));
+        let mut state = self.state.write().await;
+        for key in keys {
+            self.prune_empty_collection_locked(&mut state, &key).await?;
+        }
+        Ok(())
+    }
+
+    async fn prune_empty_collection_locked(
+        &self,
+        state: &mut StoreState,
+        key: &str,
+    ) -> AppResult<()> {
+        let is_empty = state
+            .collections
+            .get(key)
+            .is_some_and(|collection| collection.documents.is_empty());
+        if !is_empty {
+            return Ok(());
+        }
+
+        let prefix = format!("{key}/");
+        let has_descendant_documents = state.collections.iter().any(|(name, collection)| {
+            name.starts_with(&prefix) && !collection.documents.is_empty()
+        });
+        if has_descendant_documents {
+            return Ok(());
+        }
+
+        match tokio::fs::remove_dir_all(self.collection_dir(key)).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        state
+            .collections
+            .retain(|name, _| name != key && !name.starts_with(&prefix));
+        state
+            .known_collections
+            .retain(|name| name != key && !name.starts_with(&prefix));
         Ok(())
     }
 
@@ -1028,6 +1092,35 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(page.total, 1);
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn removes_empty_collection_directories_and_recreates_them_on_write() {
+        let root = std::env::temp_dir().join(format!(
+            "restly-collection-lifecycle-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let path = CollectionPath::from_segments(&["logs"]).unwrap();
+        let store = DocumentStore::open(&root).await.unwrap();
+        let collection_dir = root.join("collections/logs");
+
+        store
+            .replace(&path, "entry", json!({ "message": "created" }))
+            .await
+            .unwrap();
+        assert!(collection_dir.exists());
+
+        store.delete(&path, "entry").await.unwrap();
+        assert!(!collection_dir.exists());
+        assert!(store.collections().await.unwrap().is_empty());
+
+        let (created, _) = store
+            .replace(&path, "entry", json!({ "message": "recreated" }))
+            .await
+            .unwrap();
+        assert!(created);
+        assert!(collection_dir.exists());
         tokio::fs::remove_dir_all(root).await.unwrap();
     }
 }

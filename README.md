@@ -6,7 +6,8 @@ under `/data/**`, and includes an embedded admin UI for monitoring, editing,
 and exercising the API.
 
 No collection definitions are required. A collection is created the first time
-a document is written to it.
+a document is written to it and is removed when it no longer contains any
+documents or populated nested collections.
 
 ## Quick start
 
@@ -84,7 +85,8 @@ their resource path. Writes are appended to a JSONL write-ahead journal and
 flushed before the in-memory state changes. After 100 changes, Restly writes a
 compact `snapshot.json` and clears that journal. On startup, Restly rebuilds a
 collection from its snapshot and journal, recovering committed writes without
-an external database.
+an external database. Empty collection directories are pruned automatically;
+writing a document to that path later recreates the collection.
 
 ## Admin API and UI
 
@@ -121,3 +123,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 cd ui && npm test && npm run build
 ```
+
+## Postman Demo
+
+Import [Restly.postman_collection.json](postman/Restly.postman_collection.json) into Postman and run the requests in order. It uses a unique `postman-demo-*` collection for each run, validates the main REST API workflows, and removes its demo documents and collection during cleanup.
