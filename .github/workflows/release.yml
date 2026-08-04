@@ -1,0 +1,217 @@
+name: Release
+
+# Manual only: pick which part of the version to bump. The workflow bumps
+# Cargo.toml (source of truth for CARGO_PKG_VERSION, which the server
+# reports at /api/health, /api/config, and --version) and ui/package.json,
+# commits and tags that on main, then builds and publishes binaries for
+# the new tag.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version part to bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+        required: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Gate the release on the current, unreleased state of main — if this
+  # fails, nothing below runs and no version is bumped or tagged.
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - working-directory: ui
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run build
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          retention-days: 1
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  bump-version:
+    name: Bump version, tag, push
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+
+      - uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2
+        with:
+          tool: cargo-edit
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ui/.nvmrc
+
+      - id: bump
+        run: |
+          set -euo pipefail
+          cargo set-version --bump "${{ inputs.bump }}"
+          cargo update -p rusty-template
+          version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+
+          # Keep the frontend's own package.json version in sync — the
+          # running app doesn't read it, but it's confusing for the two
+          # halves of a "fullstack" template to drift.
+          (cd ui && npm version "$version" --no-git-tag-version --allow-same-version)
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock ui/package.json ui/package-lock.json
+          git commit -m "chore(release): ${{ steps.bump.outputs.tag }}"
+          # An annotated tag — `--follow-tags` below only forwards annotated
+          # tags reachable from the pushed commit, not lightweight ones.
+          git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.tag }}"
+          git push origin main --follow-tags
+
+  build:
+    name: Build / ${{ matrix.target }}
+    needs: bump-version
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.bump-version.outputs.tag }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - working-directory: ui
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          key: ${{ matrix.target }}
+
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="rusty-template-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
+          mkdir "$stage"
+          cp "target/${{ matrix.target }}/release/rusty-template" "$stage/"
+          cp README.md LICENSE config.toml "$stage/"
+          tar -czf "$stage.tar.gz" "$stage"
+          shasum -a 256 "$stage.tar.gz" > "$stage.tar.gz.sha256"
+
+      - name: Package (windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $stage = "rusty-template-${{ needs.bump-version.outputs.tag }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/rusty-template.exe" -Destination $stage
+          Copy-Item README.md, LICENSE, config.toml -Destination $stage
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          Get-FileHash "$stage.zip" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $stage.zip" } |
+            Out-File -Encoding ascii "$stage.zip.sha256"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            rusty-template-*.tar.gz
+            rusty-template-*.tar.gz.sha256
+            rusty-template-*.zip
+            rusty-template-*.zip.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [bump-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ needs.bump-version.outputs.tag }}
+          name: ${{ needs.bump-version.outputs.tag }}
+          generate_release_notes: true
+          files: dist/*
