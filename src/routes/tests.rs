@@ -187,6 +187,24 @@ async fn data_api_supports_nested_collections_and_put_upserts() {
         .unwrap();
     assert_eq!(protected_parent.status(), StatusCode::CONFLICT);
 
+    let child_id = child["_id"].as_str().unwrap();
+    let deleted_child = app
+        .clone()
+        .oneshot(request(
+            Method::DELETE,
+            &format!("/data/users/ada/orders/{child_id}"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(deleted_child.status(), StatusCode::NO_CONTENT);
+
+    let deleted_parent = app
+        .clone()
+        .oneshot(request(Method::DELETE, "/data/users/ada"))
+        .await
+        .unwrap();
+    assert_eq!(deleted_parent.status(), StatusCode::NO_CONTENT);
+
     let upsert = app
         .oneshot(json_request(
             Method::PUT,
@@ -223,6 +241,38 @@ async fn data_root_and_admin_collection_routes_list_auto_created_collections() {
         assert_eq!(body["data"][0]["name"], "logs");
         assert_eq!(body["data"][0]["count"], 1);
     }
+
+    let id = body_json(created).await["_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let deleted = app
+        .clone()
+        .oneshot(request(Method::DELETE, &format!("/data/logs/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+
+    let collections = app
+        .clone()
+        .oneshot(request(Method::GET, "/api/collections"))
+        .await
+        .unwrap();
+    assert_eq!(collections.status(), StatusCode::OK);
+    assert!(body_json(collections).await["data"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    let recreated = app
+        .oneshot(json_request(
+            Method::POST,
+            "/data/logs",
+            serde_json::json!({ "message": "recreated" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(recreated.status(), StatusCode::CREATED);
 }
 
 #[tokio::test]
