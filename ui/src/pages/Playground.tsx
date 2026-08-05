@@ -561,7 +561,16 @@ export default function PlaygroundPage() {
             <h3 className="px-1 pb-1 font-mono text-[0.67rem] text-ink-faint">RECENT RUNS</h3>
             <div className="flex flex-col gap-0.5">
               {workspace.history.map((entry) => (
-                <button type="button" key={entry.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-2" onClick={() => setDraft((current) => ({ ...current, method: entry.method, path: entry.path }))}>
+                <button
+                  type="button"
+                  key={entry.id}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-2"
+                  onClick={() => {
+                    setDraft((current) => ({ ...current, method: entry.method, path: entry.path }));
+                    setSelectedSaved(null);
+                    setResponse(null);
+                  }}
+                >
                   <span className={`font-mono text-[0.67rem] font-semibold ${methodTone(entry.method)}`}>{entry.method}</span>
                   <span className="min-w-0 flex-1 truncate text-[0.75rem]">{entry.path}</span>
                   <span className={`rounded px-1.5 py-0.5 font-mono text-[0.65rem] ${statusTone(entry.status)}`}>{entry.status}</span>
