@@ -129,6 +129,24 @@ cargo test
 cd ui && npm test && npm run build
 ```
 
+## Releases
+
+Releases use a reviewable version-bump pull request; GitHub Actions never
+commits directly to `main`. Before the first release, add a fine-grained
+repository secret named `RELEASE_BOT_TOKEN` with `Contents`, `Pull requests`,
+and `Issues` read/write permissions. A GitHub App installation token with the
+same permissions also works.
+
+Run **Prepare release** from `main` and select `patch`, `minor`, or `major`.
+It creates a `release/vX.Y.Z` branch and a labeled pull request that updates
+the Rust and UI package versions together. The normal required checks and
+review rules apply to that pull request.
+
+When the release pull request is merged, **Publish release** tags that exact
+merge commit, builds the platform archives, and creates or updates the GitHub
+Release. A rerun resumes publication only when the existing tag already points
+to the same merge commit; it refuses a tag that points elsewhere.
+
 ## Postman Demo
 
 Import [Restly.postman_collection.json](postman/Restly.postman_collection.json) into Postman and run the requests in order. It uses a unique `postman-demo-*` collection for each run, validates the main REST API workflows, and removes its demo documents and collection during cleanup.
