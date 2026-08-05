@@ -88,7 +88,7 @@ describe("PlaygroundPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole("button", { name: /saved request/i }));
+    await user.click(screen.getByRole("button", { name: /^post saved request$/i }));
     await user.click(screen.getByRole("button", { name: /data\/from-history/i }));
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -100,5 +100,36 @@ describe("PlaygroundPage", () => {
         expect.objectContaining({ method: "GET", path: "/data/from-history" }),
       ]),
     );
+  });
+
+  it("deletes a saved request from the local workspace", async () => {
+    window.localStorage.setItem(
+      "restly-request-workspace",
+      JSON.stringify({
+        baseUrl: "",
+        variables: [],
+        saved: [
+          {
+            id: "saved-request",
+            updatedAt: 1,
+            name: "Saved request",
+            method: "GET",
+            path: "/data/users",
+            params: [],
+            headers: [],
+            body: "",
+            assertions: [],
+          },
+        ],
+        history: [],
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Delete saved request Saved request" }));
+
+    expect(screen.queryByRole("button", { name: /saved request/i })).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("restly-request-workspace") ?? "{}").saved).toEqual([]);
   });
 });
