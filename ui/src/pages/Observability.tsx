@@ -26,7 +26,7 @@ function statusTone(status: number) {
 export default function ObservabilityPage() {
   const { notifyError, push } = useToast();
   const { metrics } = useLive();
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("data");
   const requestsQuery = useQuery({
     queryKey: ["recent-requests"],
     queryFn: () => api.requests(150),

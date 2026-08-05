@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../context/ToastContext";
 import PlaygroundPage from "./Playground";
 
@@ -14,6 +14,10 @@ function renderPage() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  window.localStorage.clear();
 });
 
 describe("PlaygroundPage", () => {
@@ -43,9 +47,58 @@ describe("PlaygroundPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole("button", { name: /save/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     expect(await screen.findByText("Untitled request")).toBeInTheDocument();
     expect(window.localStorage.getItem("restly-request-workspace")).toContain("Untitled request");
+  });
+
+  it("does not overwrite a saved request after opening a recent run", async () => {
+    window.localStorage.setItem(
+      "restly-request-workspace",
+      JSON.stringify({
+        baseUrl: "",
+        variables: [],
+        saved: [
+          {
+            id: "saved-request",
+            updatedAt: 1,
+            name: "Saved request",
+            method: "POST",
+            path: "/data/original",
+            params: [],
+            headers: [],
+            body: '{"original":true}',
+            assertions: [],
+          },
+        ],
+        history: [
+          {
+            id: "recent-run",
+            name: "Recent request",
+            method: "GET",
+            path: "/data/from-history",
+            status: 200,
+            durationMs: 4,
+            timestampMs: 1,
+          },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: /saved request/i }));
+    await user.click(screen.getByRole("button", { name: /data\/from-history/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const workspace = JSON.parse(window.localStorage.getItem("restly-request-workspace") ?? "{}");
+    expect(workspace.saved).toHaveLength(2);
+    expect(workspace.saved).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "saved-request", path: "/data/original" }),
+        expect.objectContaining({ method: "GET", path: "/data/from-history" }),
+      ]),
+    );
   });
 });
