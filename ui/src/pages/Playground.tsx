@@ -413,6 +413,15 @@ export default function PlaygroundPage() {
     setResponse(null);
   };
 
+  const deleteSaved = (id: string) => {
+    setWorkspace((current) => ({
+      ...current,
+      saved: current.saved.filter((entry) => entry.id !== id),
+    }));
+    if (selectedSaved === id) setSelectedSaved(null);
+    push("info", "Saved request deleted");
+  };
+
   const send = async () => {
     let url: string;
     let body: string | undefined;
@@ -551,10 +560,15 @@ export default function PlaygroundPage() {
             <h3 className="px-1 pb-1 font-mono text-[0.67rem] text-ink-faint">SAVED REQUESTS</h3>
             <div className="mb-4 flex flex-col gap-0.5">
               {workspace.saved.map((saved) => (
-                <button type="button" key={saved.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left ${selectedSaved === saved.id ? "bg-accent text-on-accent" : "hover:bg-surface-2"}`} onClick={() => selectSaved(saved)}>
-                  <span className={`font-mono text-[0.67rem] font-semibold ${selectedSaved === saved.id ? "text-on-accent" : methodTone(saved.method)}`}>{saved.method}</span>
-                  <span className="min-w-0 flex-1 truncate text-[0.78rem]">{saved.name}</span>
-                </button>
+                <div key={saved.id} className={`flex items-center gap-1 rounded-md ${selectedSaved === saved.id ? "bg-accent text-on-accent" : "hover:bg-surface-2"}`}>
+                  <button type="button" className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left" onClick={() => selectSaved(saved)}>
+                    <span className={`font-mono text-[0.67rem] font-semibold ${selectedSaved === saved.id ? "text-on-accent" : methodTone(saved.method)}`}>{saved.method}</span>
+                    <span className="min-w-0 flex-1 truncate text-[0.78rem]">{saved.name}</span>
+                  </button>
+                  <button type="button" className="icon-btn danger mr-1 size-7 shrink-0" onClick={() => deleteSaved(saved.id)} title={`Delete ${saved.name}`} aria-label={`Delete saved request ${saved.name}`}>
+                    <IconTrash size={13} />
+                  </button>
+                </div>
               ))}
               {!workspace.saved.length ? <p className="px-2 py-1 text-[0.76rem] text-ink-faint">No saved requests</p> : null}
             </div>
